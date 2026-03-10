@@ -1,0 +1,20 @@
+{
+  "PIL": "Pillow",
+  "bs4": "beautifulsoup4",
+  "cv2": "opencv-python",
+  "dateutil": "python-dateutil",
+  "dotenv": "python-dotenv",
+  "git": "GitPython",
+  "jwt": "PyJWT",
+  "matplotlib": "matplotlib",
+  "numpy": "numpy",
+  "pandas": "pandas",
+  "requests": "requests",
+  "scipy": "scipy",
+  "sklearn": "scikit-learn",
+  "torch": "torch",
+  "torchaudio": "torchaudio",
+  "torchvision": "torchvision",
+  "transformers": "transformers",
+  "yaml": "PyYAML"
+}
