@@ -17,7 +17,6 @@ from betteruv.install.uv_backend import UVBackend
 from betteruv.outputs.requirements_writer import write_requirements_file
 from betteruv.parsing.python_imports import extract_imports
 from betteruv.repo.inspector import inspect_repo
-from betteruv.knowledge.alias_map import map_import_to_package
 from betteruv.resolution.plan_builder import (
     build_plan_from_metadata,
     build_plan_from_scan,
@@ -25,15 +24,9 @@ from betteruv.resolution.plan_builder import (
     merge_plans,
 )
 from betteruv.resolution.candidate_mapper import map_imports_to_package_map
-from betteruv.resolution.torch_family import harmonize_torch_family
+from betteruv.resolution.package_utils import package_key
 from betteruv.verify.import_check import verify_imports
-
-
-def _package_key(package: str) -> str:
-    for marker in ("[", "<", ">", "=", "!", "~", " "):
-        if marker in package:
-            package = package.split(marker, maxsplit=1)[0]
-    return package.strip().lower().replace("_", "-")
+from betteruv.verify.test_run import run_tests
 
 
 class BetterUVOrchestrator:
@@ -117,6 +110,8 @@ class BetterUVOrchestrator:
         include_tests: bool = True,
         install: bool = True,
         write_requirements: bool = True,
+        run_tests_after_resolve: bool = False,
+        test_command: list[str] | None = None,
         init_project: bool = True,
         sync: bool = False,
         frozen_sync: bool = False,
@@ -124,7 +119,7 @@ class BetterUVOrchestrator:
     ) -> ResolveResult:
         scan_result = self.scan(path, include_tests=include_tests)
         third_party_imports = sorted(scan_result.classification.third_party_imports)
-        direct_mappings, unresolved_imports, _ = map_imports_to_package_map(third_party_imports)
+        direct_mappings, _, _ = map_imports_to_package_map(third_party_imports)
         scan_plan = build_plan_from_scan(scan_result.classification)
         metadata_plan = None
         metadata_package_keys: set[str] = set()
@@ -135,7 +130,7 @@ class BetterUVOrchestrator:
         ):
             mode = "metadata+scan"
             metadata_plan = build_plan_from_metadata(scan_result.repo_profile.root)
-            metadata_package_keys = {_package_key(item) for item in metadata_plan.packages}
+            metadata_package_keys = {package_key(item) for item in metadata_plan.packages}
             plan = merge_plans(metadata_plan, scan_plan)
         else:
             mode = "inference"
@@ -144,7 +139,7 @@ class BetterUVOrchestrator:
         exact_match_candidates = sorted(
             import_name
             for import_name, package in direct_mappings.items()
-            if package == import_name and map_import_to_package(import_name) is None
+            if package == import_name
         )
 
         ai_candidates = sorted(set(plan.unresolved_imports) | set(exact_match_candidates))
@@ -165,7 +160,7 @@ class BetterUVOrchestrator:
                     updated_packages: list[str] = []
                     replaced = False
                     for package in plan.packages:
-                        if _package_key(package) == _package_key(previous_package):
+                        if package_key(package) == package_key(previous_package):
                             updated_packages.append(suggested_package)
                             replaced = True
                         else:
@@ -188,12 +183,11 @@ class BetterUVOrchestrator:
             plan.unresolved_imports = [
                 item for item in plan.unresolved_imports if item not in suggestions
             ]
-            unresolved_imports = [item for item in unresolved_imports if item not in suggestions]
 
         inferred_import_map = {
             import_name: package
             for import_name, package in direct_mappings.items()
-            if _package_key(package) not in metadata_package_keys
+            if package_key(package) not in metadata_package_keys
         }
         version_suggestions = self.version_suggester.suggest_specifiers(
             inferred_import_map,
@@ -206,12 +200,12 @@ class BetterUVOrchestrator:
         )
         if version_suggestions:
             package_replacements = {
-                _package_key(inferred_import_map[import_name]): suggested
+                package_key(inferred_import_map[import_name]): suggested
                 for import_name, suggested in version_suggestions.items()
             }
             updated_packages: list[str] = []
             for package in plan.packages:
-                replacement = package_replacements.get(_package_key(package))
+                replacement = package_replacements.get(package_key(package))
                 updated_packages.append(replacement or package)
             plan.packages = updated_packages
             for import_name, suggested in version_suggestions.items():
@@ -221,11 +215,11 @@ class BetterUVOrchestrator:
                     f"AI version inference for import '{import_name}'"
                 )
 
-        plan = harmonize_torch_family(plan)
         plan = consolidate_plan(plan)
 
         install_result = None
         verify_result = None
+        test_result = None
         requirements_path = None
         failure_analysis = None
 
@@ -258,11 +252,24 @@ class BetterUVOrchestrator:
                 uv_executable=self.installer.uv_executable,
             )
 
+        can_run_tests = (
+            run_tests_after_resolve
+            and (install_result is None or install_result.success)
+            and (verify_result is None or verify_result.success)
+        )
+
         if verify_result and not verify_result.success:
             failure_analysis = self.failure_analyzer.analyze(
                 verify_result.stderr,
                 verify_result.failed_imports,
                 installed_packages=plan.packages,
+            )
+        elif can_run_tests:
+            test_result = run_tests(
+                cwd=scan_result.repo_profile.root,
+                command=test_command or ["pytest", "-q"],
+                use_uv_run=True,
+                uv_executable=self.installer.uv_executable,
             )
 
         return ResolveResult(
@@ -271,6 +278,7 @@ class BetterUVOrchestrator:
             plan=plan,
             install_result=install_result,
             verify_result=verify_result,
+            test_result=test_result,
             requirements_path=requirements_path,
             failure_analysis=failure_analysis,
         )

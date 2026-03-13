@@ -16,7 +16,6 @@ dependencies = [
   "python-dotenv>=1.2.2",
   "pyyaml>=6.0.3",
   "requests>=2.32.5",
-  "sampleapp>=0.0.1",
   "typer>=0.12.0",
 ]
 
@@ -34,7 +33,5 @@ betteruv = ["knowledge/data/*.json"]
 
 [tool.uv.workspace]
 members = [
-    "demo_repo",
-    "gpu_demo_repo",
     "challenge_repo",
 ]

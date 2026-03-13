@@ -3,17 +3,6 @@ from __future__ import annotations
 from betteruv.ai.groq_client import GroqClient
 
 
-FALLBACK_MAP = {
-    "yaml": "PyYAML",
-    "cv2": "opencv-python",
-    "PIL": "Pillow",
-    "sklearn": "scikit-learn",
-    "bs4": "beautifulsoup4",
-    "httpx": "httpx",
-    "pytest": "pytest",
-}
-
-
 class ResolverAssistant:
     """Resolve unresolved imports to package names, with Groq as the primary source."""
 
@@ -35,11 +24,6 @@ class ResolverAssistant:
             declared_packages=declared_packages or [],
             import_context=import_context or {},
         )
-
-        # Keep deterministic fallbacks for common modules if AI is unavailable or incomplete.
-        for item in imports:
-            if item not in suggestions and item in FALLBACK_MAP:
-                suggestions[item] = FALLBACK_MAP[item]
 
         return suggestions
 

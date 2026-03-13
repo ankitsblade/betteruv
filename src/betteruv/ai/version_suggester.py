@@ -1,19 +1,7 @@
 from __future__ import annotations
 
-import re
-
 from betteruv.ai.groq_client import GroqClient
-
-_PACKAGE_NAME_SPLIT_RE = re.compile(r"[\s\[<>=!~]")
-
-
-def _package_key(package: str) -> str:
-    name = _PACKAGE_NAME_SPLIT_RE.split(package, maxsplit=1)[0]
-    return name.strip().lower().replace("_", "-")
-
-
-def _looks_versioned(package: str) -> bool:
-    return _package_key(package) != package.strip().lower().replace("_", "-")
+from betteruv.resolution.package_utils import is_versioned_specifier, package_key
 
 
 class VersionSuggester:
@@ -36,7 +24,7 @@ class VersionSuggester:
         inferred = {
             import_name: package
             for import_name, package in import_to_package.items()
-            if not _looks_versioned(package)
+            if not is_versioned_specifier(package)
         }
         if not inferred:
             return {}
@@ -86,9 +74,9 @@ class VersionSuggester:
             specifier = raw_specifier.strip()
             if import_name not in inferred or not specifier:
                 continue
-            if _package_key(specifier) != _package_key(inferred[import_name]):
+            if package_key(specifier) != package_key(inferred[import_name]):
                 continue
-            if not _looks_versioned(specifier):
+            if not is_versioned_specifier(specifier):
                 continue
             parsed[import_name] = specifier
 

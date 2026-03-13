@@ -10,4 +10,6 @@ wheels/
 .venv
 
 .env
-challenge_repo
+.pytest_cache/
+requirements.inferred.txt
+challenge_repo/

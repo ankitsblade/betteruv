@@ -44,6 +44,12 @@ Resolve dependencies (default flow):
 betteruv resolve /path/to/repo
 ```
 
+Resolve and run tests after successful install/import verification:
+
+```bash
+betteruv resolve /path/to/repo --run-tests
+```
+
 Resolve without installing (preview only):
 
 ```bash

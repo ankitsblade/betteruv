@@ -74,11 +74,21 @@ class VerifyResult:
 
 
 @dataclass(slots=True)
+class TestRunResult:
+    success: bool
+    command: list[str] = field(default_factory=list)
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int = 0
+
+
+@dataclass(slots=True)
 class ResolveResult:
     mode: str
     scan_result: ScanResult
     plan: ResolvePlan
     install_result: Optional[InstallResult] = None
     verify_result: Optional[VerifyResult] = None
+    test_result: Optional[TestRunResult] = None
     requirements_path: Optional[Path] = None
     failure_analysis: Optional[dict[str, str]] = None

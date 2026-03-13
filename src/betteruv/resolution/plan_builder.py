@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from betteruv.core.models import ImportClassification, ResolvePlan
 from betteruv.parsing.pyproject_parser import parse_pyproject_dependencies
 from betteruv.parsing.requirements_parser import parse_requirements_txt
 from betteruv.resolution.candidate_mapper import map_imports_to_packages
-
-
-_PACKAGE_NAME_SPLIT_RE = re.compile(r"[\s\[<>=!~]")
-
-
-def _package_key(package: str) -> str:
-    name = _PACKAGE_NAME_SPLIT_RE.split(package, maxsplit=1)[0]
-    return name.strip().lower().replace("_", "-")
+from betteruv.resolution.package_utils import package_key
 
 
 def _prefer_package(existing: str, candidate: str) -> str:
     if existing == candidate:
         return existing
 
-    existing_key = _package_key(existing)
-    candidate_key = _package_key(candidate)
+    existing_key = package_key(existing)
+    candidate_key = package_key(candidate)
     if existing_key != candidate_key:
         return existing
 
@@ -39,7 +31,7 @@ def consolidate_plan(plan: ResolvePlan) -> ResolvePlan:
     reasons_by_package = dict(plan.mapping_reasons)
 
     for package in plan.packages:
-        key = _package_key(package)
+        key = package_key(package)
         selected = selected_by_key.get(key)
         if selected is None:
             selected_by_key[key] = package
@@ -51,7 +43,7 @@ def consolidate_plan(plan: ResolvePlan) -> ResolvePlan:
 
     packages = sorted(selected_by_key.values())
     mapping_reasons = {
-        package: reasons_by_package.get(package, reasons_by_package.get(_package_key(package), "-"))
+        package: reasons_by_package.get(package, reasons_by_package.get(package_key(package), "-"))
         for package in packages
     }
 

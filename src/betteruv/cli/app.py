@@ -1,4 +1,5 @@
 from pathlib import Path
+import shlex
 from time import perf_counter
 from typing import Optional
 
@@ -92,6 +93,14 @@ def resolve(
     include_tests: bool = typer.Option(True, help="Include test files"),
     install: bool = typer.Option(True, help="Install resolved dependencies"),
     write_requirements: bool = typer.Option(True, help="Write requirements.inferred.txt"),
+    run_tests: bool = typer.Option(
+        False,
+        help="Run tests after successful resolve/install/verify",
+    ),
+    test_command: str = typer.Option(
+        "pytest -q",
+        help="Test command to run when --run-tests is enabled",
+    ),
     init_project: bool = typer.Option(
         True,
         help="Initialize project with 'uv init --bare' if pyproject.toml is missing",
@@ -122,6 +131,8 @@ def resolve(
             include_tests=include_tests,
             install=install,
             write_requirements=write_requirements,
+            run_tests_after_resolve=run_tests,
+            test_command=shlex.split(test_command),
             init_project=init_project,
             sync=sync,
             frozen_sync=frozen_sync,
@@ -195,6 +206,19 @@ def resolve(
                 border_style="yellow",
             )
         )
+
+    if result.test_result is not None:
+        test_title = "Tests Passed" if result.test_result.success else "Tests Failed"
+        test_style = "green" if result.test_result.success else "red"
+        test_lines = [f"Command: {' '.join(result.test_result.command)}"]
+        if result.test_result.success:
+            test_lines.append("Test run completed successfully.")
+        else:
+            if result.test_result.stdout.strip():
+                test_lines.append("\nstdout:\n" + result.test_result.stdout.strip())
+            if result.test_result.stderr.strip():
+                test_lines.append("\nstderr:\n" + result.test_result.stderr.strip())
+        console.print(Panel("\n".join(test_lines), title=test_title, border_style=test_style))
 
 
 @app.command()
