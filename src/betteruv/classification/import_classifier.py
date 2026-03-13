@@ -11,15 +11,16 @@ def _build_local_module_names(repo_root: Path, python_files: list[Path]) -> set[
 
     for file_path in python_files:
         rel = file_path.relative_to(repo_root)
+        package_rel = Path(*rel.parts[1:]) if rel.parts[:1] == ("src",) and len(rel.parts) > 1 else rel
 
         if file_path.name == "__init__.py":
-            if rel.parent != Path("."):
-                names.add(rel.parent.parts[0])
+            if package_rel.parent != Path("."):
+                names.add(package_rel.parent.parts[0])
             continue
 
         names.add(file_path.stem)
-        if rel.parts:
-            names.add(rel.parts[0])
+        if package_rel.parts:
+            names.add(package_rel.parts[0])
 
     return names
 

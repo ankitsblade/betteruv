@@ -50,6 +50,15 @@ Resolve without installing (preview only):
 betteruv resolve /path/to/repo --no-install
 ```
 
+Resolve a repo. Unresolved imports automatically fall back to AI-assisted mapping when available:
+
+```bash
+# Put keys in .env (auto-loaded by betteruv), or export in shell.
+# GROQ_API_KEY=your_groq_api_key
+# BETTERUV_GROQ_MODEL=llama-3.3-70b-versatile  # optional
+betteruv resolve /path/to/repo
+```
+
 Verify imports:
 
 ```bash
@@ -65,7 +74,8 @@ betteruv verify /path/to/repo --use-uv-run
 ## v0.5 Notes
 
 - Works best for small to medium Python repos with missing metadata
-- Uses alias mapping + simple fallback heuristics
+- Uses alias mapping and marks unknown imports as unresolved
+- Automatically uses Groq (Llama 3.3 by default) as a fallback for unresolved imports when configured
 - Output is designed to be clear and fast for iterative use
 
 ## Future Checklist
@@ -76,4 +86,3 @@ betteruv verify /path/to/repo --use-uv-run
 - [ ] Add optional plain/CI output mode
 - [ ] Add richer repo-level reports (JSON output)
 - [ ] Expand alias map coverage and quality tests
-

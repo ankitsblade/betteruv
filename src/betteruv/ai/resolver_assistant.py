@@ -1,28 +1,92 @@
 from __future__ import annotations
 
+from betteruv.ai.groq_client import GroqClient
+
+
+FALLBACK_MAP = {
+    "yaml": "PyYAML",
+    "cv2": "opencv-python",
+    "PIL": "Pillow",
+    "sklearn": "scikit-learn",
+    "bs4": "beautifulsoup4",
+    "httpx": "httpx",
+    "pytest": "pytest",
+}
+
 
 class ResolverAssistant:
-    """
-    Placeholder AI resolver assistant.
+    """Resolve unresolved imports to package names, with Groq as the primary source."""
 
-    In v1 this is intentionally simple.
-    Later you can wire it to OpenAI, Ollama, or another provider.
-    """
+    def __init__(self) -> None:
+        self.groq = GroqClient()
 
-    def suggest_packages(self, unresolved_imports: list[str]) -> dict[str, str]:
-        suggestions: dict[str, str] = {}
+    def suggest_packages(
+        self,
+        unresolved_imports: list[str],
+        declared_packages: list[str] | None = None,
+        import_context: dict[str, list[str]] | None = None,
+    ) -> dict[str, str]:
+        imports = sorted(set(item.strip() for item in unresolved_imports if item.strip()))
+        if not imports:
+            return {}
 
-        # Very small hand-coded fallback examples.
-        fallback_map = {
-            "yaml": "PyYAML",
-            "cv2": "opencv-python",
-            "PIL": "Pillow",
-            "sklearn": "scikit-learn",
-            "bs4": "beautifulsoup4",
-        }
+        suggestions = self._from_groq(
+            imports,
+            declared_packages=declared_packages or [],
+            import_context=import_context or {},
+        )
 
-        for item in unresolved_imports:
-            if item in fallback_map:
-                suggestions[item] = fallback_map[item]
+        # Keep deterministic fallbacks for common modules if AI is unavailable or incomplete.
+        for item in imports:
+            if item not in suggestions and item in FALLBACK_MAP:
+                suggestions[item] = FALLBACK_MAP[item]
 
         return suggestions
+
+    def _from_groq(
+        self,
+        unresolved_imports: list[str],
+        declared_packages: list[str],
+        import_context: dict[str, list[str]],
+    ) -> dict[str, str]:
+        context_lines: list[str] = []
+        for item in unresolved_imports:
+            locations = import_context.get(item, [])
+            if locations:
+                context_lines.append(f"{item}: {', '.join(locations[:3])}")
+
+        response = self.groq.chat_json(
+            system_prompt=(
+                "You map Python import module names to installable PyPI package names. "
+                "Return strict JSON only."
+            ),
+            user_prompt=(
+                "For each unresolved Python import below, suggest the most likely PyPI package. "
+                "Only include high-confidence mappings. "
+                "Return JSON object with a single key 'mappings', where value is an object "
+                "{import_name: package_name}.\n\n"
+                f"imports: {unresolved_imports}\n"
+                f"declared_packages: {declared_packages}\n"
+                "import_locations:\n"
+                + ("\n".join(context_lines) if context_lines else "(none)")
+            ),
+        )
+        if not response:
+            return {}
+
+        mappings = response.get("mappings", response)
+        if not isinstance(mappings, dict):
+            return {}
+
+        valid_imports = set(unresolved_imports)
+        parsed: dict[str, str] = {}
+        for raw_import, raw_package in mappings.items():
+            if not isinstance(raw_import, str) or not isinstance(raw_package, str):
+                continue
+            imp = raw_import.strip()
+            pkg = raw_package.strip()
+            if not imp or not pkg or imp not in valid_imports:
+                continue
+            parsed[imp] = pkg
+
+        return parsed

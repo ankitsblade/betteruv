@@ -31,3 +31,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 betteruv = ["knowledge/data/*.json"]
+
+[tool.uv.workspace]
+members = [
+    "demo_repo",
+    "gpu_demo_repo",
+    "challenge_repo",
+]

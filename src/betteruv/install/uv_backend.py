@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Callable
 
 from betteruv.core.models import InstallResult
 
@@ -14,13 +15,38 @@ class UVBackend:
     def is_available(self) -> bool:
         return shutil.which(self.uv_executable) is not None
 
-    def _run_command(self, command: list[str], repo_root: Path) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+    def _run_command(
+        self,
+        command: list[str],
+        repo_root: Path,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> InstallResult:
+        process = subprocess.Popen(
             command,
             cwd=repo_root,
             text=True,
-            capture_output=True,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
+        output_lines: list[str] = []
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.rstrip()
+            if not line:
+                continue
+            output_lines.append(line)
+            if progress_callback is not None:
+                progress_callback(line)
+
+        returncode = process.wait()
+        combined_output = "\n".join(output_lines)
+        return InstallResult(
+            success=returncode == 0,
+            command=command,
+            stdout=combined_output,
+            stderr="" if returncode == 0 else combined_output,
+            returncode=returncode,
         )
 
     def install_packages(
@@ -28,8 +54,9 @@ class UVBackend:
         repo_root: Path,
         packages: list[str],
         ensure_project: bool = True,
-        sync: bool = True,
+        sync: bool = False,
         frozen_sync: bool = False,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> InstallResult:
         if not packages:
             return InstallResult(
@@ -67,7 +94,13 @@ class UVBackend:
         failed_command: list[str] | None = None
 
         for command in commands:
-            completed = self._run_command(command, repo_root=repo_root)
+            if progress_callback is not None:
+                progress_callback(f"$ {' '.join(command)}")
+            completed = self._run_command(
+                command,
+                repo_root=repo_root,
+                progress_callback=progress_callback,
+            )
             last_returncode = completed.returncode
             stdout_parts.append(f"$ {' '.join(command)}\n{completed.stdout}".rstrip())
             stderr_parts.append(f"$ {' '.join(command)}\n{completed.stderr}".rstrip())

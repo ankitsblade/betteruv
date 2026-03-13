@@ -10,8 +10,23 @@ from rich.text import Text
 
 from betteruv.core.orchestrator import BetterUVOrchestrator
 
+try:
+    from dotenv import find_dotenv, load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    find_dotenv = None  # type: ignore[assignment]
+    load_dotenv = None  # type: ignore[assignment]
+
 app = typer.Typer(help="Infer and install Python dependencies for metadata-poor repos.")
 console = Console()
+
+
+def _load_local_env() -> None:
+    """Load env vars from a local .env file if python-dotenv is available."""
+    if load_dotenv is None or find_dotenv is None:
+        return
+    env_path = find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(env_path, override=False)
 
 
 def _bool_label(value: bool) -> str:
@@ -77,12 +92,14 @@ def resolve(
     include_tests: bool = typer.Option(True, help="Include test files"),
     install: bool = typer.Option(True, help="Install resolved dependencies"),
     write_requirements: bool = typer.Option(True, help="Write requirements.inferred.txt"),
-    use_ai: bool = typer.Option(False, help="Enable AI assist for unresolved imports"),
     init_project: bool = typer.Option(
         True,
         help="Initialize project with 'uv init --bare' if pyproject.toml is missing",
     ),
-    sync: bool = typer.Option(True, help="Run 'uv sync' after adding dependencies"),
+    sync: bool = typer.Option(
+        False,
+        help="Run 'uv sync' after adding dependencies",
+    ),
     frozen_sync: bool = typer.Option(
         False,
         help="Run 'uv sync --frozen' (requires an up-to-date lockfile)",
@@ -91,16 +108,24 @@ def resolve(
     """Resolve and optionally install inferred dependencies."""
     orchestrator = BetterUVOrchestrator()
     start = perf_counter()
-    with console.status("Resolving dependency plan..."):
+    with console.status("Resolving dependency plan...") as status:
+        def _progress_update(message: str) -> None:
+            clean = message.strip()
+            if not clean:
+                return
+            if len(clean) > 100:
+                clean = clean[:97] + "..."
+            status.update(f"[bold cyan]Installing[/bold cyan] {clean}")
+
         result = orchestrator.resolve(
             Path(path),
             include_tests=include_tests,
             install=install,
             write_requirements=write_requirements,
-            use_ai=use_ai,
             init_project=init_project,
             sync=sync,
             frozen_sync=frozen_sync,
+            progress_callback=_progress_update if install else None,
         )
     elapsed = perf_counter() - start
 
@@ -109,6 +134,15 @@ def resolve(
     console.print(f"[green]Complete[/green] in {elapsed:.2f}s")
 
     _render_packages(result.plan.packages, result.plan.mapping_reasons)
+
+    if result.plan.unresolved_imports:
+        console.print(
+            Panel(
+                "\n".join(result.plan.unresolved_imports),
+                title="Unresolved Imports",
+                border_style="yellow",
+            )
+        )
 
     if result.requirements_path:
         console.print(
@@ -122,11 +156,19 @@ def resolve(
     if result.install_result is not None:
         install_title = "Install" if result.install_result.success else "Install Failed"
         install_style = "green" if result.install_result.success else "red"
-        install_body = [f"Command: {' '.join(result.install_result.command)}"]
-        if result.install_result.stdout.strip():
-            install_body.append("\nstdout:\n" + result.install_result.stdout.strip())
-        if result.install_result.stderr.strip():
-            install_body.append("\nstderr:\n" + result.install_result.stderr.strip())
+        if result.install_result.success:
+            install_body = [
+                f"Installed or updated {len(result.plan.packages)} packages.",
+                f"Command: {' '.join(result.install_result.command)}",
+            ]
+            if sync:
+                install_body.append("Environment sync requested.")
+        else:
+            install_body = [f"Command: {' '.join(result.install_result.command)}"]
+            if result.install_result.stdout.strip():
+                install_body.append("\nstdout:\n" + result.install_result.stdout.strip())
+            if result.install_result.stderr.strip():
+                install_body.append("\nstderr:\n" + result.install_result.stderr.strip())
         console.print(Panel("\n".join(install_body), title=install_title, border_style=install_style))
 
     if result.verify_result is not None:
@@ -137,6 +179,22 @@ def resolve(
         else:
             verify_message = "All checked imports imported successfully."
         console.print(Panel(verify_message, title="Verification", border_style=verify_style))
+
+    if result.failure_analysis is not None:
+        analysis_lines = [
+            result.failure_analysis.get("message", "Unknown verification failure."),
+        ]
+        recommendation = result.failure_analysis.get("recommendation")
+        if recommendation:
+            analysis_lines.append("")
+            analysis_lines.append(recommendation)
+        console.print(
+            Panel(
+                "\n".join(analysis_lines),
+                title=f"Failure Analysis: {result.failure_analysis.get('type', 'unknown')}",
+                border_style="yellow",
+            )
+        )
 
 
 @app.command()
@@ -174,4 +232,5 @@ def verify(
 
 
 def main() -> None:
+    _load_local_env()
     app()

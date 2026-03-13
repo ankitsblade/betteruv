@@ -38,7 +38,11 @@ def verify_imports(
     try:
         command = [interpreter, str(script_path)]
         if use_uv_run and shutil.which(uv_executable):
-            command = [uv_executable, "run", *command]
+            uv_python = python_executable or "python"
+            command = [uv_executable, "run"]
+            if cwd is not None:
+                command.extend(["--project", str(cwd)])
+            command.extend([uv_python, str(script_path)])
 
         completed = subprocess.run(
             command,

@@ -81,3 +81,4 @@ class ResolveResult:
     install_result: Optional[InstallResult] = None
     verify_result: Optional[VerifyResult] = None
     requirements_path: Optional[Path] = None
+    failure_analysis: Optional[dict[str, str]] = None
