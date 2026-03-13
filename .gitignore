@@ -10,4 +10,4 @@ wheels/
 .venv
 
 .env
-challenge_repo/
+challenge_repo
